@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <!-- //libreria para editar winner pop-up (no funcciona. lo dejo comentado por ahora) -->
+   <!--- <script src="https://cdn.jsdelivr.net/npm/sweetalert2@12"></script> -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="/styles.css">
+    <title>Color Challenge</title>
+    
+    <title>Color Challenge</title>
+    <style>
+        body {
+
+
+            
+            background-image: url('https://free-vectors.net/_ph/6/805542910.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        h1 {
+            font-size: 24px;
+        }
+        h2 {
+            font-size: 18px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #gameId {
+            font-weight: bold;
+            font-size: 18px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 10px;
+        }
+        input[type="text"] {
+            padding: 5px;
+            font-size: 16px;
+        }
+        #divPlayers {
+            display: flex;
+            justify-content: center;
+            margin: 20px;
+        }
+        .player {
+            margin: 0 10px;
+            text-align: center;
+            width: 100px;
+            font-size: 14px;
+            padding: 10px;
+        }
+        #divBoard {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .tile {
+            width: 100px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin: 5px;
+            cursor: pointer;
+            border: 2px solid #000;
+        }
+    </style>
+
+</head>
+
+<body>
+    
+
+    <h1>Color Challenge</h1>
+    <h2>Game ID: <span id="gameId">N/A</span></h2> 
+    <button id = 'btnCreate'>New Game</button>
+    <button id = 'btnJoin'>Join Game</button>
+    <input type = 'text' id = 'txtGameId' placeholder=Enter Game ID'>
+    <div id  = 'divPlayers'></div>
+    <div id  = 'divBoard'></div>
+
+    <script>
+         
+        
+        //HTML elements
+        let clientId = null;
+        let gameId = null;
+        let playerColor = null;
+        let hasWon = false;
+
+        /*let ws = new WebSocket("ws://localhost:9090") <-- cambie a ip para conectar distintas maquinas en una red*/
+        const serverAddress = "192.168.0.114";
+        let ws = new WebSocket("ws://192.168.0.114:9090");
+
+        const btnCreate = document.getElementById("btnCreate");
+        const btnJoin = document.getElementById("btnJoin");
+        const txtGameId = document.getElementById("txtGameId");
+        const divPlayers = document.getElementById("divPlayers");
+        const divBoard = document.getElementById("divBoard");
+
+    
+        
+        btnJoin.addEventListener("click", e => {
+           
+            if (gameId === null)
+                gameId = txtGameId.value;
+
+            
+            const payLoad = {
+                "method": "join",
+                "clientId": clientId,
+                "gameId": gameId
+            }
+           
+            ws.send(JSON.stringify(payLoad));
+            playBackgroundMusic();
+
+        })
+
+        btnCreate.addEventListener("click", e => {
+
+            const payLoad = {
+                "method": "create",
+                "clientId": clientId
+            }
+
+            ws.send(JSON.stringify(payLoad));
+
+        })
+
+        ws.onmessage = message => {
+            //message.data
+            const response = JSON.parse(message.data);
+            //connect
+            if (response.method === "connect"){
+                clientId = response.clientId;
+                console.log("Client id Set successfully " + clientId)
+            }
+
+            //create
+            if (response.method === "create"){
+                gameId = response.game.id;
+                document.getElementById("gameId").textContent = gameId;
+                console.log("game successfully created with id " + response.game.id + " with " + response.game.balls + " balls")  
+            }
+
+
+            //update
+            if (response.method === "update"){
+                //{1: "red", 1}
+                if (!response.game.state) return;
+                for(const b of Object.keys(response.game.state))
+                {
+                    const color = response.game.state[b];
+                    const ballObject = document.getElementById("ball" + b);
+                    ballObject.style.backgroundColor = color
+                }
+
+
+               /* const balls = Object.values(response.game.state);
+                if (!hasWon && balls.length === 6 && balls.every(ballColor => ballColor === playerColor))
+                 {//reemplazo window.alert por sawl.fire
+                     Swal.fire({
+                        title: "Congratulations!",
+                        text: "You've won the game!",
+                        icon: "success",
+                }).then((result) => {
+                    if (result.isConfirmed)
+                    {
+                    hasWon = true;
+                     }
+                }); */
+
+                // Check if the player has won
+            const balls = Object.values(response.game.state);
+            if (!hasWon && balls.length === 6 && balls.every(ballColor => ballColor === playerColor)) {
+                window.alert("Congratulations! You've won the game!");
+                hasWon = true; //  fix de pop-up que no cerraba: flag to true para prevenri que vuelv a aparecer al presionar ok
+            }
+        }
+
+            //join
+            if (response.method === "join"){
+                const game = response.game;
+              
+
+                while(divPlayers.firstChild)
+                    divPlayers.removeChild (divPlayers.firstChild)
+
+                game.clients.forEach (c => {
+
+                    const d = document.createElement("div");
+                    d.style.width = "200px";
+                    d.style.background = c.color
+                    d.textContent = c.clientId;
+                    divPlayers.appendChild(d);
+
+                    if (c.clientId === clientId) playerColor = c.color;
+                })
+
+
+                while(divBoard.firstChild)
+                divBoard.removeChild (divBoard.firstChild)
+
+                for (let i = 0; i < game.balls; i++){
+
+                    const b = document.createElement("button");
+                    b.id = "ball" + (i +1);
+                    b.tag = i+1
+                    b.textContent = i+1
+                    b.style.width = "150px"
+                    b.style.height = "150px"
+                    b.addEventListener("click", e => {
+                        b.style.background = playerColor
+                        const payLoad = {
+                            "method": "play",
+                            "clientId": clientId,
+                            "gameId": gameId,
+                            "ballId": b.tag,
+                            "color": playerColor
+                        }
+                        ws.send(JSON.stringify(payLoad))
+                    })
+                    divBoard.appendChild(b);
+                }
+
+
+
+
+            }
+        }
+
+        
+    </script>
+
+    <audio id="backgroundMusic" loop>
+    <source src="kirby.mp3" type="audio/mpeg">
+
+    </audio>
+  
+      
+</body>
+</html>
